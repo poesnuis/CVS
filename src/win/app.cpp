@@ -68,9 +68,10 @@ App::App(HINSTANCE instance,bool smoke,bool safe):instance_(instance),smoke_(smo
     cls.lpszClassName=L"CVS.Overlay.1";cls.lpfnWndProc=overlay_proc;cls.hbrBackground=nullptr;RegisterClassExW(&cls);
     dpi_=static_cast<int>(GetDpiForSystem());
     RECT work{};SystemParametersInfoW(SPI_GETWORKAREA,0,&work,0);
-    int w=std::min(MulDiv(840,dpi_,96),work.right-work.left),h=std::min(MulDiv(780,dpi_,96),work.bottom-work.top);
+    int workWidth=static_cast<int>(work.right-work.left),workHeight=static_cast<int>(work.bottom-work.top);
+    int w=std::min(MulDiv(840,dpi_,96),workWidth),h=std::min(MulDiv(780,dpi_,96),workHeight);
     window_=CreateWindowExW(0,appClass,L"Color Vision Simulator",WS_OVERLAPPEDWINDOW|WS_VSCROLL,
-        work.left+std::max(0,(work.right-work.left-w)/2),work.top+std::max(0,(work.bottom-work.top-h)/2),w,h,nullptr,nullptr,instance_,this);
+        work.left+std::max(0,(workWidth-w)/2),work.top+std::max(0,(workHeight-h)/2),w,h,nullptr,nullptr,instance_,this);
     if(!window_) throw std::runtime_error("Cannot create main window");
     dpi_=static_cast<int>(GetDpiForWindow(window_));
     // Keep the preview out of the monitor capture. The UI is shown above overlays.

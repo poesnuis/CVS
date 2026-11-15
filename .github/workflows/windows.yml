@@ -6,13 +6,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: cvs-windows-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
 jobs:
   windows:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Configure MSVC x64
-        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build -A x64
       - name: Build Release
         run: cmake --build build --config Release --parallel
       - name: Scientific, configuration and D3D11 WARP tests
