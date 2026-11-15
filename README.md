@@ -7,6 +7,11 @@ Visual Studio or runtime dependency installation is needed to use the packaged e
 **Development build — see [verified results](docs/TESTING.md). A successful build
 or shader test does not establish desktop or game compatibility.**
 
+Verified on a Windows CI display: real capture/exclusion/output and click-through,
+actual application hotkeys/tray registration/preset controls/emergency disable,
+17,703 CPU assertions and 69,120 WARP pixel comparisons. Physical multi-monitor,
+Windows 10/11 hardware/game compatibility and hardware benchmarks remain open.
+
 ## Install and use
 
 1. Download the `ColorVisionSimulator-win-x64` artifact from a successful
