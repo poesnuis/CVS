@@ -77,6 +77,18 @@ capture sessions/devices on their adapters, at native resolution. GPU textures s
 the GPU; no per-frame CPU readback occurs. Overlay windows are excluded from capture,
 do not accept input, and appear only after a frame is rendered.
 
+CVS automatically restores its overlay above a focused windowed/borderless game that
+raises itself into the topmost window band. This preserves game focus and input.
+Minimizing or hiding CVS settings leaves active filtering running. Use the toggle or
+emergency shortcut to disable it.
+
+If a game stays unfiltered only while focused, use the latest build and confirm the
+game's display is selected. For a report, include the game/version, Windows build,
+windowed/borderless mode and `diagnostics.log` from the settings folder below. The log
+records overlay-order recovery without recording game titles or captured images.
+FNaF 1 on Windows 11 build 26100 was reported to fail on focus in the original build;
+the recovery targets that failure mechanism, but actual FNaF validation is still pending.
+
 Exclusive fullscreen can bypass desktop composition and is **not supported by the
 desktop overlay**. Optional ReShade integration is a separate, manually installed
 shader for permitted games. CVS does not install or inject ReShade. See
@@ -115,13 +127,8 @@ Linux/macOS can build and test the portable scientific/configuration library wit
 The Windows UI/capture binary is built only on Windows. CI uploads the executable
 package, matching source archive and test logs, and does not publish public releases.
 
-## Development memory
-
-[Notion development headquarters](https://www.notion.so/4198721d702e8132a66ad28c995aa2d8)
-contains the roadmap, research, decisions, bugs, journal, testing and handoff.
-[Current handoff](docs/HANDOFF.md), [architecture](docs/ARCHITECTURE.md) and
-[session instructions](AGENTS.md) are repository mirrors. Code and test evidence
-take precedence over status labels.
+See [architecture](docs/ARCHITECTURE.md), [test evidence](docs/TESTING.md),
+[known limitations](docs/KNOWN_ISSUES.md) and [contributor instructions](AGENTS.md).
 
 Original code: MIT. Dependencies/data notices are in [LICENSES](LICENSES/README.md).
 ShaderGlass was evaluated as an architectural reference; its code is not included.

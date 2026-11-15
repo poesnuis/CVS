@@ -16,6 +16,7 @@ class App {
     };
     HINSTANCE instance_{};
     HWND window_{};
+    HWND smokeGame_{};
     HFONT font_{};
     UINT taskbarCreated_{};
     int dpi_{96}, tab_{0}, scroll_{};
@@ -23,6 +24,7 @@ class App {
         emergencyRegistered_{};
     bool smokeFailed_{};
     int smokeStage_{};
+    unsigned overlayRecoveries_{};
     Config config_;
     std::filesystem::path configPath_, logPath_;
     std::vector<Control> controls_;

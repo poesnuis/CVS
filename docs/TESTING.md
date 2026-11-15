@@ -1,10 +1,11 @@
 # Test evidence and compatibility
 
-Verified code revision: `0bed223025bbbe502416cfef2610b3f1abb6fea3`.
+## Baseline verification
+
+Previous verified code revision: `0bed223025bbbe502416cfef2610b3f1abb6fea3`.
 [Successful Windows run 43748600145](https://github.com/poesnuis/CVS/actions/runs/43748600145),
 2026-11-15. MSVC 19.44 x64 Release on GitHub's `windows-2022` runner, one 1024×768
-display. Subsequent documentation-only packaging commits do not change this code;
-the package's `SOURCE_COMMIT.txt` identifies its exact source revision.
+display. The package's `SOURCE_COMMIT.txt` identifies its exact source revision.
 
 | Check | Actual result |
 |---|---|
@@ -22,6 +23,25 @@ the package's `SOURCE_COMMIT.txt` identifies its exact source revision.
 
 This is correctness evidence on a Windows CI virtual machine, not clinical validation,
 a physical GPU benchmark, or a Windows 10/11 hardware/game compatibility matrix.
+
+## Foreground game regression
+
+Client report: FNaF 1, Windows 11 10.0.26100/build 26100. The desktop remains filtered,
+but the game becomes unfiltered only when focused, even windowed. Enabling CVS after
+opening the game does not fix it. This is client evidence; FNaF is not installed on CI.
+
+New checks (results pending the Windows build):
+
+- Real GDI and Direct3D 9 source windows are raised above a running capture overlay
+  twice; production recovery must restore order without stealing foreground focus.
+- Capture exclusion, transformed GPU output and click-through remain correct after
+  recovery. An already-correct order must not cause another raise; a hidden filter
+  must never be revived by order maintenance.
+- Actual application smoke test minimizes CVS, focuses a competing topmost window,
+  waits for timer-driven recovery, then switches the fixture to borderless and repeats.
+  It must preserve game focus, keep capture active and still pass emergency disable.
+
+These are controlled Windows regressions, not verification of actual FNaF gameplay.
 
 ## Automated scope
 
