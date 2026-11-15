@@ -1,0 +1,2 @@
+#pragma once
+namespace cvs { inline constexpr char shaderSource[]=R"CVS_SHADER(@CVS_SHADER_SOURCE@)CVS_SHADER"; }

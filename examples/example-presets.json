@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "settings": {"preset": "deuteranopia", "model": 0, "severity": 1.0},
+  "presets": [
+    {"name": "Deuteranomaly 50 percent", "settings": {"preset": "deuteranomaly", "severity": 0.5}},
+    {"name": "Brettel tritanopia", "settings": {"preset": "tritanopia", "model": 2, "severity": 1.0}},
+    {"name": "Experimental LMS gains", "settings": {"preset": "custom-lms", "severity": 1.0, "cone_gains": [0.8, 1.0, 1.0]}},
+    {"name": "Custom identity", "settings": {"preset": "custom-matrix", "severity": 1.0, "matrix": [1,0,0,0,1,0,0,0,1]}}
+  ]
+}
