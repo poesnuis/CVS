@@ -132,6 +132,17 @@ int main() {
         });
         rejects([] { deserialize("{\"schema\":1,\"settings\":{\"preset\":\"missing\"}}"); });
         rejects([] { deserialize("{\"schema\":1,\"hotkeys\":[]}"); });
+        rejects([] {
+            deserialize(
+                R"({"schema":1,"settings":{"preset":"custom-lms","cone_gains":[1,1,1,1]}})");
+        });
+        rejects([] {
+            deserialize(
+                R"({"schema":1,"settings":{"preset":"custom-matrix","matrix":[1,0,0,0,1,0,0,0,1,2]}})");
+        });
+        rejects([] {
+            deserialize(R"({"schema":1,"settings":{"preset":"custom-matrix","matrix":[1,0,0]}})");
+        });
         rejects([] { deserialize(std::string(1024 * 1024 + 1, ' ')); });
         auto hot = cfg.hotkeys;
         hot[4] = {3, 0x22};

@@ -27,6 +27,11 @@ static json settings_json(const Settings &s) {
 static Settings parse_settings(const json &j) {
     if (!j.is_object())
         throw std::invalid_argument("Settings must be an object");
+    if (j.contains("cone_gains") &&
+        (!j.at("cone_gains").is_array() || j.at("cone_gains").size() != 3))
+        throw std::invalid_argument("Exactly three cone gains are required");
+    if (j.contains("matrix") && (!j.at("matrix").is_array() || j.at("matrix").size() != 9))
+        throw std::invalid_argument("Exactly nine matrix coefficients are required");
     Settings s;
     s.preset = preset_from_id(j.at("preset").get<std::string>());
     s.model = static_cast<Model>(j.value("model", 0));

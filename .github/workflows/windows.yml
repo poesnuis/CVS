@@ -12,6 +12,7 @@ concurrency:
 jobs:
   windows:
     runs-on: windows-2022
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,10 +27,13 @@ jobs:
       - name: Application UI, global hotkeys, tray and emergency test
         shell: pwsh
         run: |
-          $p = Start-Process build/Release/ColorVisionSimulator.exe -ArgumentList '--smoke-test' -PassThru -Wait
-          if ($p.ExitCode -ne 0) { throw "Smoke test failed: $($p.ExitCode)" }
+          $cvsSmokeDir = Join-Path $env:TEMP 'CVS Portable'
+          New-Item -ItemType Directory -Force $cvsSmokeDir | Out-Null
+          Copy-Item build/Release/ColorVisionSimulator.exe "$cvsSmokeDir/ColorVisionSimulator.exe"
+          $cvsProcess = Start-Process "$cvsSmokeDir/ColorVisionSimulator.exe" -ArgumentList '--smoke-test' -PassThru -Wait
           Copy-Item "$env:TEMP/CVS-smoke/diagnostics.log" build/smoke.log -ErrorAction SilentlyContinue
           Copy-Item "$env:TEMP/CVS-smoke/gui.bmp" build/gui.bmp -ErrorAction SilentlyContinue
+          if ($cvsProcess.ExitCode -ne 0) { throw "Smoke test failed: $($cvsProcess.ExitCode)" }
       - name: Package portable application and source
         shell: pwsh
         run: |

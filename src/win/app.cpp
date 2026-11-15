@@ -1294,6 +1294,35 @@ void App::smoke_step() {
         if (std::abs(config_.settings.severity - .75f) > 1e-6f)
             throw std::runtime_error("Smoke: preset manager load failed");
         log("PASS real global toggle/next, severity control and preset-manager save/load");
+        // Reserve a chord on another window and prove customization rolls back atomically.
+        HWND competitor = CreateWindowExW(0, L"STATIC", L"CVS hotkey conflict test", 0, 0, 0, 0, 0,
+                                          HWND_MESSAGE, nullptr, instance_, nullptr);
+        if (!competitor || !RegisterHotKey(competitor, 1, MOD_CONTROL | MOD_ALT, VK_F6)) {
+            if (competitor)
+                DestroyWindow(competitor);
+            throw std::runtime_error("Smoke: cannot establish hotkey conflict fixture");
+        }
+        const auto previous = config_.hotkeys;
+        SendMessageW(control(Hotkey0), HKM_SETHOTKEY,
+                     MAKEWORD(VK_F6, HOTKEYF_CONTROL | HOTKEYF_ALT), 0);
+        SendMessageW(control(Hotkey0 + 4), HKM_SETHOTKEY,
+                     MAKEWORD(VK_NEXT, HOTKEYF_CONTROL | HOTKEYF_ALT), 0);
+        bool rejected = false;
+        try {
+            apply_hotkeys();
+        } catch (const std::exception &e) {
+            rejected =
+                std::string(e.what()).find("previous bindings restored") != std::string::npos;
+        }
+        UnregisterHotKey(competitor, 1);
+        DestroyWindow(competitor);
+        for (size_t i = 0; i < previous.size(); ++i)
+            if (previous[i].key != config_.hotkeys[i].key ||
+                previous[i].modifiers != config_.hotkeys[i].modifiers)
+                throw std::runtime_error("Smoke: hotkey conflict changed saved bindings");
+        if (!rejected || !registered_[0] || !registered_[1])
+            throw std::runtime_error("Smoke: hotkey conflict was not rejected and rolled back");
+        log("PASS occupied global shortcut rejected; previous bindings restored");
         send_test_hotkey(VK_F8);
         smokeStage_ = 2;
         SetTimer(window_, 2, 1000, nullptr);
