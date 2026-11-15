@@ -23,12 +23,13 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: Scientific, configuration and D3D11 WARP tests
         run: ctest --test-dir build -C Release --verbose --output-on-failure --output-junit test-results.xml
-      - name: Application smoke test (no capture)
+      - name: Application UI, global hotkeys, tray and emergency test
         shell: pwsh
         run: |
           $p = Start-Process build/Release/ColorVisionSimulator.exe -ArgumentList '--smoke-test' -PassThru -Wait
           if ($p.ExitCode -ne 0) { throw "Smoke test failed: $($p.ExitCode)" }
           Copy-Item "$env:TEMP/CVS-smoke/diagnostics.log" build/smoke.log -ErrorAction SilentlyContinue
+          Copy-Item "$env:TEMP/CVS-smoke/gui.bmp" build/gui.bmp -ErrorAction SilentlyContinue
       - name: Package portable application and source
         shell: pwsh
         run: |
@@ -50,3 +51,4 @@ jobs:
             build/test-results.xml
             build/Testing/Temporary/LastTest.log
             build/smoke.log
+            build/gui.bmp
