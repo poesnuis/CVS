@@ -1,0 +1,43 @@
+name: Windows x64 build and tests
+on:
+  push:
+    branches: [main, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure MSVC x64
+        run: cmake -S . -B build -A x64 -DCMAKE_BUILD_TYPE=Release
+      - name: Build Release
+        run: cmake --build build --config Release --parallel
+      - name: Scientific, configuration and D3D11 WARP tests
+        run: ctest --test-dir build -C Release --output-on-failure --output-junit test-results.xml
+      - name: Application smoke test (no capture)
+        shell: pwsh
+        run: |
+          $p = Start-Process build/Release/ColorVisionSimulator.exe -ArgumentList '--smoke-test' -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Smoke test failed: $($p.ExitCode)" }
+      - name: Package portable application and source
+        shell: pwsh
+        run: |
+          cmake --install build --config Release --prefix dist/ColorVisionSimulator
+          git archive --format=zip --output=dist/ColorVisionSimulator-source.zip HEAD
+          Compress-Archive -Path dist/ColorVisionSimulator -DestinationPath dist/ColorVisionSimulator-win-x64.zip
+          Get-FileHash dist/*.zip -Algorithm SHA256 | Format-List | Out-File dist/SHA256.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ColorVisionSimulator-win-x64
+          path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            build/test-results.xml
+            build/Testing/Temporary/LastTest.log
