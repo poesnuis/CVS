@@ -5,6 +5,7 @@
 #include <limits>
 #include <stdexcept>
 #include <filesystem>
+#include "reference_vectors.h"
 
 int checks=0;
 void check(bool b,const char* name) { ++checks; if(!b) throw std::runtime_error(name); }
@@ -31,6 +32,11 @@ int main() {
             check(dot({1,0,0},b.separator)*dot({0,0,1},b.separator)<0||dot({0,1,0},b.separator)*dot({0,0,1},b.separator)<0,"Brettel branches");
         }
         Settings gray; gray.preset=Preset::Achromatopsia;
+        for(const auto& ref:referenceVectors) {
+            Settings s;s.preset=static_cast<Preset>(ref.deficiency*2);s.model=static_cast<Model>(ref.model);s.severity=ref.severity;
+            auto actual=transform_pixel(ref.input,make_transform(s));
+            close(actual.x,ref.expected.x,2e-5f);close(actual.y,ref.expected.y,2e-5f);close(actual.z,ref.expected.z,2e-5f);
+        }
         auto r=transform_pixel({1,0,0},make_transform(gray)); close(r.x,.4984399f); close(r.x,r.y); close(r.y,r.z);
         Settings custom; custom.preset=Preset::CustomLMS;
         auto lc=transform_pixel({.2f,.4f,.6f},make_transform(custom)); close(lc.x,.2f); close(lc.y,.4f); close(lc.z,.6f);

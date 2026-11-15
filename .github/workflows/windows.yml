@@ -44,3 +44,4 @@ jobs:
           path: |
             build/test-results.xml
             build/Testing/Temporary/LastTest.log
+            C:/Users/runneradmin/AppData/Local/Temp/CVS-smoke/diagnostics.log

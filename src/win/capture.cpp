@@ -38,7 +38,7 @@ std::vector<Monitor> enumerate_monitors() {
 }
 Capture::Capture(const Monitor& m,HWND overlay,const Settings& s,int fps):monitor_(m),overlay_(overlay),settings_(s),fpsLimit_(fps) {worker_=std::jthread([this](std::stop_token stop){run(stop);});}
 Capture::~Capture() {worker_.request_stop(); if(worker_.joinable()) worker_.join();}
-void Capture::update(const Settings& s,int fps) {std::lock_guard lock(mutex_);settings_=s;fpsLimit_=fps;}
+void Capture::update(const Settings& s,int fps) {std::lock_guard lock(mutex_);settings_=s;fpsLimit_=fps;++revision_;}
 CaptureStats Capture::stats() const {std::lock_guard lock(mutex_);return stats_;}
 void Capture::run(std::stop_token stop) {
     try {winrt::init_apartment(winrt::apartment_type::multi_threaded);} catch(...) {std::lock_guard lock(mutex_);stats_.failed=true;stats_.status="Cannot initialize capture apartment";return;}
@@ -93,16 +93,18 @@ void Capture::session(std::stop_token stop) {
     ComPtr<ID3D11Texture2D> sampled;ComPtr<ID3D11ShaderResourceView> srv;
     capture.StartCapture();
     auto epoch=std::chrono::steady_clock::now(),lastDraw=epoch-1s;unsigned frames=0;bool shown=false;
+    uint64_t drawnRevision=~uint64_t{0};int64_t lastTimestamp=0;
     LARGE_INTEGER frequency{};QueryPerformanceFrequency(&frequency);
     while(!stop.stop_requested()) {
         const auto now=std::chrono::steady_clock::now();
-        Settings settings;int limit;
-        {std::lock_guard lock(mutex_);settings=settings_;limit=fpsLimit_;stats_.heartbeat=now;}
+        Settings settings;int limit;uint64_t revision;
+        {std::lock_guard lock(mutex_);settings=settings_;limit=fpsLimit_;revision=revision_;stats_.heartbeat=now;}
         if(closed) throw std::runtime_error("Capture display closed or disconnected");
         check_hr(device->GetDeviceRemovedReason(),"Graphics device removed");
         if(now-lastDraw<std::chrono::duration<double>(1.0/limit)) {std::this_thread::sleep_for(1ms);continue;}
         auto frame=pool.TryGetNextFrame();
-        if(!frame) {std::this_thread::sleep_for(2ms);continue;}
+        if(!frame&&(!sampled||revision==drawnRevision)) {std::this_thread::sleep_for(2ms);continue;}
+        if(frame) {
         // Keep only the newest queued frame to bound queue latency.
         for(int n=0;n<2;++n) {auto newer=pool.TryGetNextFrame();if(!newer) break;frame.Close();frame=std::move(newer);}
         auto content=frame.ContentSize();
@@ -114,16 +116,19 @@ void Capture::session(std::stop_token stop) {
             check_hr(device->CreateTexture2D(&td,nullptr,&sampled),"GPU sampling texture");check_hr(device->CreateShaderResourceView(sampled.Get(),nullptr,&srv),"GPU sampling view");
         }
         context->CopyResource(sampled.Get(),texture.Get()); // GPU-to-GPU only
-        auto timestamp=frame.SystemRelativeTime();frame.Close();
+        lastTimestamp=frame.SystemRelativeTime().count();frame.Close();
+        }
+        // Re-render the cached GPU frame after parameter changes, even on a static desktop.
+        lastDraw=now;drawnRevision=revision;
         renderer.draw(srv.Get(),rtv.Get(),static_cast<unsigned>(size.Width),static_cast<unsigned>(size.Height),make_transform(settings));
         LARGE_INTEGER presentTime{};QueryPerformanceCounter(&presentTime);
         // QPC-based frame age at submission; does not include display scanout or input latency.
-        double age=static_cast<double>(presentTime.QuadPart)*1000.0/static_cast<double>(frequency.QuadPart)-static_cast<double>(timestamp.count())/10000.0;
+        double age=static_cast<double>(presentTime.QuadPart)*1000.0/static_cast<double>(frequency.QuadPart)-static_cast<double>(lastTimestamp)/10000.0;
         auto hr=swap->Present(1,0);check_hr(hr,"Present filtered frame");
         if(!shown) {PostMessageW(overlay_,overlayShow,0,0);shown=true;}
-        lastDraw=std::chrono::steady_clock::now();++frames;double seconds=std::chrono::duration<double>(lastDraw-epoch).count();
+        const auto presentedAt=std::chrono::steady_clock::now();++frames;double seconds=std::chrono::duration<double>(presentedAt-epoch).count();
         {std::lock_guard lock(mutex_);stats_.running=true;stats_.failed=false;stats_.status="Capturing SDR / Windows Graphics Capture / D3D11 overlay";stats_.width=size.Width;stats_.height=size.Height;stats_.gpuMs=renderer.gpu_ms();stats_.frameAgeMs=age>=0&&age<10000?age:-1;
-            if(seconds>=1) {stats_.fps=frames/seconds;frames=0;epoch=lastDraw;}}
+            if(seconds>=1) {stats_.fps=frames/seconds;frames=0;epoch=presentedAt;}}
     }
 }
 }

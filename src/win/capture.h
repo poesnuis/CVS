@@ -24,7 +24,7 @@ class Capture {
     Monitor monitor_; HWND overlay_{};
     std::jthread worker_;
     mutable std::mutex mutex_;
-    Settings settings_; int fpsLimit_{};
+    Settings settings_; int fpsLimit_{};uint64_t revision_{};
     CaptureStats stats_;
     void run(std::stop_token);
     void session(std::stop_token);
