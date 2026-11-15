@@ -36,7 +36,7 @@ std::vector<Monitor> enumerate_monitors() {
     }
     std::stable_sort(result.begin(),result.end(),[](const Monitor& a,const Monitor& b){return a.primary&&!b.primary;});return result;
 }
-Capture::Capture(const Monitor& m,HWND overlay,const Settings& s,int fps):monitor_(m),overlay_(overlay),settings_(s),fpsLimit_(fps) {worker_=std::jthread([this](std::stop_token stop){run(stop);});}
+Capture::Capture(const Monitor& m,HWND overlay,const Settings& s,int fps,FrameObserver observer):monitor_(m),overlay_(overlay),settings_(s),fpsLimit_(fps),observer_(std::move(observer)) {worker_=std::jthread([this](std::stop_token stop){run(stop);});}
 Capture::~Capture() {worker_.request_stop(); if(worker_.joinable()) worker_.join();}
 void Capture::update(const Settings& s,int fps) {std::lock_guard lock(mutex_);settings_=s;fpsLimit_=fps;++revision_;}
 CaptureStats Capture::stats() const {std::lock_guard lock(mutex_);return stats_;}
@@ -120,7 +120,9 @@ void Capture::session(std::stop_token stop) {
         }
         // Re-render the cached GPU frame after parameter changes, even on a static desktop.
         lastDraw=now;drawnRevision=revision;
-        renderer.draw(srv.Get(),rtv.Get(),static_cast<unsigned>(size.Width),static_cast<unsigned>(size.Height),make_transform(settings));
+        auto transform=make_transform(settings);
+        renderer.draw(srv.Get(),rtv.Get(),static_cast<unsigned>(size.Width),static_cast<unsigned>(size.Height),transform);
+        if(observer_) observer_(device.Get(),context.Get(),sampled.Get(),back.Get(),transform);
         LARGE_INTEGER presentTime{};QueryPerformanceCounter(&presentTime);
         // QPC-based frame age at submission; does not include display scanout or input latency.
         double age=static_cast<double>(presentTime.QuadPart)*1000.0/static_cast<double>(frequency.QuadPart)-static_cast<double>(lastTimestamp)/10000.0;
