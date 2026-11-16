@@ -8,7 +8,8 @@ Visual Studio or runtime dependency installation is needed to use the packaged e
 or shader test does not establish desktop or game compatibility.**
 
 Verified on a Windows CI display: real capture/exclusion/output and click-through,
-actual application hotkeys/tray registration/preset controls/emergency disable,
+foreground order recovery with GDI and Direct3D 9 windows, filtering with settings
+minimized, actual application hotkeys/tray registration/preset controls/emergency disable,
 17,703 CPU assertions and 69,120 WARP pixel comparisons. Physical multi-monitor,
 Windows 10/11 hardware/game compatibility and hardware benchmarks remain open.
 
