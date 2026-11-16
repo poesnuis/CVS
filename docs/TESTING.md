@@ -1,10 +1,35 @@
 # Test evidence and compatibility
 
-Verified code revision: `0bed223025bbbe502416cfef2610b3f1abb6fea3`.
+## Current game-focus fix (0.1.1)
+
+Verified implementation: `a97d7e500a3dfd142542159576e39a522089b3f4`.
+[Windows build 43760135917](https://github.com/poesnuis/CVS/actions/runs/43760135917)
+passed MSVC x64 Release, all four CTest suites and the actual-application smoke test
+on 2026-11-15. The subsequent documentation-only commit preserves this implementation;
+each package records its exact checkout in `SOURCE_COMMIT.txt`.
+
+| Check | Verified result |
+|---|---|
+| CPU science/configuration | 17,703 assertions pass on Windows and Linux |
+| D3D11 WARP reference | 69,120 pixels, maximum channel error 5.77653e-07 |
+| GDI source + real WGC | 122 samples at 1024x768, two foreground order recoveries, one delivered click |
+| Direct3D 9 source + real WGC | 126 samples at 1024x768, two foreground order recoveries, one delivered click |
+| Both capture probes | Correct exclusion and transformed output; maximum UNORM error 0.00183153; focus retained; hidden overlays stay hidden |
+| Actual CVS application | Timer restores overlay over focused windowed and borderless fixtures while settings is minimized; game focus retained |
+| Existing app checks | Exe-only launch, F8/F9, preset save/load, severity, tray registration, hotkey conflict rollback and emergency disable pass |
+| Package inspection | Real x64 PE exe; system DLL imports only; source matches checkout after line-ending normalization; inner/outer hashes checked |
+| Distribution contents | Only architecture, science, testing and limitations docs; no private workspace links/IDs in source or portable archives |
+
+The test windows reproduce the ordering failure before exercising recovery. These
+results do **not** establish that FNaF itself is fixed on the client's Windows 11 PC.
+FNaF 1 gameplay, focus switching and input still need a client/hardware retest.
+
+## Baseline verification
+
+Previous verified code revision: `0bed223025bbbe502416cfef2610b3f1abb6fea3`.
 [Successful Windows run 43748600145](https://github.com/poesnuis/CVS/actions/runs/43748600145),
 2026-11-15. MSVC 19.44 x64 Release on GitHub's `windows-2022` runner, one 1024×768
-display. Subsequent documentation-only packaging commits do not change this code;
-the package's `SOURCE_COMMIT.txt` identifies its exact source revision.
+display. The package's `SOURCE_COMMIT.txt` identifies its exact source revision.
 
 | Check | Actual result |
 |---|---|
@@ -22,6 +47,25 @@ the package's `SOURCE_COMMIT.txt` identifies its exact source revision.
 
 This is correctness evidence on a Windows CI virtual machine, not clinical validation,
 a physical GPU benchmark, or a Windows 10/11 hardware/game compatibility matrix.
+
+## Foreground game regression
+
+Client report: FNaF 1, Windows 11 10.0.26100/build 26100. The desktop remains filtered,
+but the game becomes unfiltered only when focused, even windowed. Enabling CVS after
+opening the game does not fix it. This is client evidence; FNaF is not installed on CI.
+
+New checks (passed in the Windows run linked above):
+
+- Real GDI and Direct3D 9 source windows are raised above a running capture overlay
+  twice; production recovery must restore order without stealing foreground focus.
+- Capture exclusion, transformed GPU output and click-through remain correct after
+  recovery. An already-correct order must not cause another raise; a hidden filter
+  must never be revived by order maintenance.
+- Actual application smoke test minimizes CVS, focuses a competing topmost window,
+  waits for timer-driven recovery, then switches the fixture to borderless and repeats.
+  It must preserve game focus, keep capture active and still pass emergency disable.
+
+These are controlled Windows regressions, not verification of actual FNaF gameplay.
 
 ## Automated scope
 

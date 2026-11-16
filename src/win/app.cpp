@@ -1,4 +1,5 @@
 #include "app.h"
+#include "overlay.h"
 #include <algorithm>
 #include <cmath>
 #include <commctrl.h>
@@ -124,26 +125,15 @@ static void send_test_hotkey(WORD key) {
     if (SendInput(6, input, sizeof(INPUT)) != 6)
         throw std::runtime_error("Could not send smoke-test hotkey");
 }
-static LRESULT CALLBACK overlay_proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
-    if (m == WM_NCHITTEST)
-        return HTTRANSPARENT;
-    if (m == WM_MOUSEACTIVATE)
-        return MA_NOACTIVATE;
-    if (m == overlayHide) {
-        ShowWindow(w, SW_HIDE);
-        return 0;
+static bool test_window_above(HWND upper, HWND lower) {
+    // Observe actual desktop ordering; do not call the production recovery helper.
+    for (HWND w = GetTopWindow(nullptr); w; w = GetWindow(w, GW_HWNDNEXT)) {
+        if (w == upper)
+            return true;
+        if (w == lower)
+            return false;
     }
-    if (m == overlayShow) {
-        SetWindowPos(w, HWND_TOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-        auto main = GetWindow(w, GW_OWNER);
-        if (main && IsWindowVisible(main))
-            SetWindowPos(main, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
-        return 0;
-    }
-    if (m == WM_ERASEBKGND)
-        return 1;
-    return DefWindowProcW(w, m, wp, lp);
+    return false;
 }
 App::App(HINSTANCE instance, bool smoke, bool safe) : instance_(instance), smoke_(smoke) {
     PWSTR local{};
@@ -176,7 +166,7 @@ App::App(HINSTANCE instance, bool smoke, bool safe) : instance_(instance), smoke
     if (!RegisterClassExW(&cls))
         throw std::runtime_error("Cannot register main window");
     cls.lpszClassName = L"CVS.Overlay.1";
-    cls.lpfnWndProc = overlay_proc;
+    cls.lpfnWndProc = overlay_procedure;
     cls.hbrBackground = nullptr;
     RegisterClassExW(&cls);
     dpi_ = static_cast<int>(GetDpiForSystem());
@@ -226,6 +216,8 @@ App::~App() {
     if (watchdog_.joinable())
         watchdog_.join();
     stop();
+    if (smokeGame_)
+        DestroyWindow(smokeGame_);
     if (window_) {
         for (int i = 0; i < 5; ++i)
             UnregisterHotKey(window_, i + 1);
@@ -553,8 +545,8 @@ void App::start() {
                                          WS_EX_LAYERED | WS_EX_TRANSPARENT,
                                      L"CVS.Overlay.1", L"CVS filtered display", WS_POPUP,
                                      m.bounds.left, m.bounds.top, m.bounds.right - m.bounds.left,
-                                     m.bounds.bottom - m.bounds.top, window_, nullptr, instance_,
-                                     nullptr);
+                                     m.bounds.bottom - m.bounds.top, nullptr, nullptr, instance_,
+                                     window_);
             if (!h)
                 throw std::runtime_error("Cannot create display overlay");
             overlays_.push_back(h);
@@ -574,6 +566,7 @@ void App::start() {
         }
         enabled_ = true;
         paused_ = false;
+        overlayRecoveries_ = 0;
         notice_.clear();
         log("Desktop filtering enabled on " + std::to_string(chosen.size()) + " display(s)");
     } catch (...) {
@@ -789,6 +782,14 @@ void App::timer() {
     if (fault) {
         stop();
         refresh_controls();
+    } else if (enabled_ && !paused_) {
+        // The existing 100 ms UI timer also handles games that change their
+        // topmost order without a new activation event. Never take keyboard focus.
+        for (auto h : overlays_)
+            if (maintain_overlay_order(h, window_)) {
+                if (overlayRecoveries_++ == 0)
+                    log("Restored overlay above foreground window without changing focus");
+            }
     }
     std::wstring status =
         enabled_ ? (paused_ ? L"Paused. Desktop is unfiltered."
@@ -800,6 +801,8 @@ void App::timer() {
     if (enabled_ && !paused_)
         status += L"GPU " + (gpuCount ? fixed(gpu / gpuCount, 3) + L" ms" : L"N/A") +
                   L" | frame age " + (ageCount ? fixed(age / ageCount) + L" ms" : L"N/A");
+    if (overlayRecoveries_ && enabled_ && !paused_)
+        status += L" | overlay order recovered " + std::to_wstring(overlayRecoveries_) + L" times";
     if (!notice_.empty())
         status += L" " + notice_;
     set(control(Status), status);
@@ -1331,8 +1334,52 @@ void App::smoke_step() {
     if (smokeStage_ == 2) {
         if (!enabled_ || captures_.empty() || !captures_.front()->stats().running)
             throw std::runtime_error("Smoke: re-enable failed");
-        send_test_hotkey(VK_HOME);
+        // Reproduce a game becoming foreground/topmost after capture has started.
+        // Minimize CVS too: owned overlays used to disappear with their owner.
+        ShowWindow(window_, SW_MINIMIZE);
+        RECT bounds{};
+        GetWindowRect(overlays_.front(), &bounds);
+        smokeGame_ = CreateWindowExW(WS_EX_TOPMOST, L"STATIC", L"CVS focused game fixture",
+                                     WS_OVERLAPPEDWINDOW, bounds.left + 80, bounds.top + 80, 320,
+                                     240, nullptr, nullptr, instance_, nullptr);
+        if (!smokeGame_)
+            throw std::runtime_error("Smoke: cannot create game fixture");
+        ShowWindow(smokeGame_, SW_SHOW);
+        SetWindowPos(smokeGame_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+        SetForegroundWindow(smokeGame_);
+        if (GetForegroundWindow() != smokeGame_ ||
+            !test_window_above(smokeGame_, overlays_.front()))
+            throw std::runtime_error("Smoke: game did not reproduce foreground occlusion");
+        log("Fixture reproduced: focused topmost game covers the active filter");
         smokeStage_ = 3;
+        SetTimer(window_, 2, 600, nullptr);
+        return;
+    }
+    if (smokeStage_ == 3 || smokeStage_ == 4) {
+        if (!enabled_ || overlays_.empty() || !IsWindowVisible(overlays_.front()) ||
+            !test_window_above(overlays_.front(), smokeGame_) ||
+            GetForegroundWindow() != smokeGame_ || !captures_.front()->stats().running)
+            throw std::runtime_error("Smoke: focused game not covered without stealing focus");
+        if (smokeStage_ == 3) {
+            log("PASS windowed foreground recovery while CVS is minimized; game keeps focus");
+            // The game changes to borderless and raises itself again while focused.
+            RECT bounds{};
+            GetWindowRect(overlays_.front(), &bounds);
+            SetWindowLongPtrW(smokeGame_, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            SetWindowPos(smokeGame_, HWND_TOPMOST, bounds.left, bounds.top,
+                         bounds.right - bounds.left, bounds.bottom - bounds.top,
+                         SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+            if (!test_window_above(smokeGame_, overlays_.front()))
+                throw std::runtime_error("Smoke: borderless fixture did not cover filter");
+            smokeStage_ = 4;
+            return;
+        }
+        log("PASS repeated borderless foreground recovery; game keeps focus");
+        DestroyWindow(smokeGame_);
+        smokeGame_ = nullptr;
+        show();
+        send_test_hotkey(VK_HOME);
+        smokeStage_ = 5;
         SetTimer(window_, 2, 600, nullptr);
         return;
     }

@@ -1,7 +1,9 @@
 // Exercises capture exclusion, shader output and click-through in an actual Windows
 // session. Missing WGC/monitor capability is an explicit CTest skip, never a pass.
 #include "win/capture.h"
+#include "win/overlay.h"
 #include <cmath>
+#include <d3d9.h>
 #include <dwmapi.h>
 #include <iostream>
 #include <string>
@@ -28,20 +30,14 @@ static LRESULT CALLBACK source_proc(HWND w, UINT m, WPARAM p, LPARAM l) {
     }
     return DefWindowProcW(w, m, p, l);
 }
-static LRESULT CALLBACK overlay_proc(HWND w, UINT m, WPARAM p, LPARAM l) {
-    if (m == cvs::overlayShow) {
-        ShowWindow(w, SW_SHOWNOACTIVATE);
-        return 0;
+static bool above(HWND first, HWND second) {
+    for (HWND h = GetTopWindow(nullptr); h; h = GetWindow(h, GW_HWNDNEXT)) {
+        if (h == first)
+            return true;
+        if (h == second)
+            return false;
     }
-    if (m == cvs::overlayHide) {
-        ShowWindow(w, SW_HIDE);
-        return 0;
-    }
-    if (m == WM_NCHITTEST)
-        return HTTRANSPARENT;
-    if (m == WM_MOUSEACTIVATE)
-        return MA_NOACTIVATE;
-    return DefWindowProcW(w, m, p, l);
+    return false;
 }
 struct Window {
     HWND h{};
@@ -50,8 +46,9 @@ struct Window {
             DestroyWindow(h);
     }
 };
-int main() {
+int main(int argc, char **argv) {
     using namespace cvs;
+    const bool useD3d9 = argc > 1 && std::string(argv[1]) == "--d3d9";
     try {
         SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         winrt::init_apartment(winrt::apartment_type::multi_threaded);
@@ -78,14 +75,47 @@ int main() {
             throw std::runtime_error("Cannot create source window");
         ShowWindow(source.h, SW_SHOWNORMAL);
         UpdateWindow(source.h);
+        // A legacy accelerated game-like source, in addition to the GDI desktop
+        // test. No game files, injection or changes to another process are used.
+        ComPtr<IDirect3D9> d3d9;
+        ComPtr<IDirect3DDevice9> gameDevice;
+        if (useD3d9) {
+            d3d9.Attach(Direct3DCreate9(D3D_SDK_VERSION));
+            if (!d3d9)
+                throw std::runtime_error("Cannot initialize D3D9 game fixture");
+            D3DPRESENT_PARAMETERS pp{};
+            pp.Windowed = TRUE;
+            pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
+            pp.hDeviceWindow = source.h;
+            pp.BackBufferWidth = 240;
+            pp.BackBufferHeight = 160;
+            pp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+            check_hr(d3d9->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, source.h,
+                                        D3DCREATE_SOFTWARE_VERTEXPROCESSING, &pp, &gameDevice),
+                     "Create windowed D3D9 game fixture");
+        }
+        auto paint = [&] {
+            if (gameDevice) {
+                const D3DCOLOR colors[]{D3DCOLOR_XRGB(255, 0, 0), D3DCOLOR_XRGB(0, 255, 0),
+                                        D3DCOLOR_XRGB(0, 0, 255)};
+                check_hr(gameDevice->Clear(0, nullptr, D3DCLEAR_TARGET, colors[paintColor], 1, 0),
+                         "Clear D3D9 game frame");
+                check_hr(gameDevice->Present(nullptr, nullptr, nullptr, nullptr),
+                         "Present D3D9 game frame");
+            } else {
+                InvalidateRect(source.h, nullptr, FALSE);
+                UpdateWindow(source.h);
+            }
+        };
+        paint();
         DwmFlush();
         wc.lpszClassName = L"CVS.ProbeOverlay";
-        wc.lpfnWndProc = overlay_proc;
+        wc.lpfnWndProc = overlay_procedure;
         RegisterClassW(&wc);
         Window overlay{CreateWindowExW(
             WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
             wc.lpszClassName, L"CVS capture test", WS_POPUP, m.bounds.left, m.bounds.top,
-            m.bounds.right - m.bounds.left, m.bounds.bottom - m.bounds.top, source.h, nullptr,
+            m.bounds.right - m.bounds.left, m.bounds.bottom - m.bounds.top, nullptr, nullptr,
             wc.hInstance, nullptr)};
         if (!overlay.h)
             throw std::runtime_error("Cannot create probe overlay");
@@ -140,6 +170,7 @@ int main() {
             ++samples;
         };
         CaptureStats stats;
+        unsigned recoveries = 0;
         {
             Settings settings;
             Capture capture(m, overlay.h, settings, 60, observe);
@@ -156,8 +187,21 @@ int main() {
                     break;
                 if ((tick++ % 5) == 0) {
                     paintColor = (paintColor + 1) % 3;
-                    InvalidateRect(source.h, nullptr, FALSE);
-                    UpdateWindow(source.h);
+                    paint();
+                }
+                if (tick == 20 || tick == 50) {
+                    if (!IsWindowVisible(overlay.h))
+                        throw std::runtime_error("Filter never became visible");
+                    SetWindowPos(source.h, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+                    SetForegroundWindow(source.h);
+                    if (GetForegroundWindow() != source.h || !above(source.h, overlay.h))
+                        throw std::runtime_error("Game fixture did not reproduce filter occlusion");
+                    if (!maintain_overlay_order(overlay.h, nullptr) ||
+                        !above(overlay.h, source.h) || GetForegroundWindow() != source.h)
+                        throw std::runtime_error("Filter recovery failed or stole game focus");
+                    if (maintain_overlay_order(overlay.h, nullptr))
+                        throw std::runtime_error("Filter keeps raising itself with correct order");
+                    ++recoveries;
                 }
                 if (tick == 35) {
                     SetCursorPos(x + 120, y + 80);
@@ -173,6 +217,8 @@ int main() {
                 std::this_thread::sleep_for(std::chrono::milliseconds(40));
             }
             ShowWindow(overlay.h, SW_HIDE);
+            if (maintain_overlay_order(overlay.h, nullptr) || IsWindowVisible(overlay.h))
+                throw std::runtime_error("Order maintenance revived a hidden filter");
         }
         if (!stats.running || stats.failed)
             throw std::runtime_error("Capture pipeline failure: " + stats.status);
@@ -180,12 +226,17 @@ int main() {
             throw std::runtime_error("Insufficient captured known-color transitions");
         if (!clicks)
             throw std::runtime_error("Click did not pass through overlay to source window");
+        if (recoveries != 2)
+            throw std::runtime_error("Missing repeated foreground game recovery checks");
         std::cout
             << "PASS: WGC capture, exclusion across RGB source transitions, D3D11 "
                "output/reference, parameter updates and click-through at "
             << stats.width << "x" << stats.height << "; " << samples
             << " samples; maximum UNORM channel error " << maxError << "; " << clicks
-            << " delivered click(s). Single runner display only; not a hardware/game benchmark.\n";
+            << " delivered click(s); " << recoveries << " foreground order recoveries with "
+            << (useD3d9 ? "D3D9" : "GDI")
+            << " source, focus retained and hidden-filter safety. Single runner display only; "
+               "not actual FNaF or a hardware benchmark.\n";
         return 0;
     } catch (const winrt::hresult_error &e) {
         std::cerr << "FAIL: " << winrt::to_string(e.message()) << "\n";

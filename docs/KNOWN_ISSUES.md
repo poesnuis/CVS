@@ -10,6 +10,9 @@
 - Overlay cannot cover exclusive fullscreen bypassing composition. Borderless game
   compatibility is unverified. ReShade .fx is supplied but has not been validated in
   ReShade or games; its preset subset is smaller than the desktop preset manager.
+- The original build lost filtering over focused FNaF 1 on Windows 11 build 26100,
+  while the rest of the desktop stayed filtered (client report). Overlay order recovery
+  now targets foreground/topmost changes; an actual FNaF retest is still required.
 - DRM/protected content, secure desktop and lock screen are unsupported. The capture
   indicator, hardware cursor and some higher-z-order system surfaces remain unfiltered.
 - Multiple displays and resolution/DPI/disconnect recovery are implemented but have
@@ -24,8 +27,5 @@
 - 60 FPS and 1080p/1440p/4K are targets, not measured benchmarks. Diagnostics report
   submitted frame rate, GPU draw time and capture-to-submit frame age, not end-to-end
   latency. Static displays may produce fewer fresh frames.
-- The executable is unsigned. It has not been publicly released or merged to main;
-  this is a reviewable development package with outstanding acceptance gates.
-
-Resolved build issues and reference pitfalls are preserved in JOURNAL.md and Notion's
-bug/decision records rather than silently forgotten.
+- The executable is unsigned. This is a development package with outstanding
+  hardware/game acceptance gates. Original implementation PR #1 was merged by the owner.

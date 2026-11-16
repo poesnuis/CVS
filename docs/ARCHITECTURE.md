@@ -24,6 +24,18 @@ The main UI is also excluded, and placed above the overlay so its paired preview
 visible. Some other topmost system surfaces may appear above overlays. Cursor capture
 is disabled; the actual cursor remains interactive and unfiltered.
 
+ADR-004 (2026-11-15): overlay HWNDs have no owner. The original settings-owned windows
+could hide when settings was minimized and were constrained to stay above their owner.
+Pass the settings HWND as creation data only. While filtering is active, the existing
+100 ms UI timer checks whether an overlapping foreground window is above a visible
+overlay and restores the overlay's topmost position with `SWP_NOACTIVATE`. It then
+keeps visible settings/modal controls above the filter, without changing foreground
+focus. No correction occurs when ordering is already correct, the foreground window
+is a CVS dialog, or the overlay is hidden. This also covers games raising themselves
+again without a new activation event; no input hook or game injection is required.
+The tradeoff is up to one timer interval before recovery (longer if the UI is busy).
+This addresses ordinary desktop window ordering, not exclusive fullscreen scanout.
+
 Errors hide overlays and retry up to three times. Display changes hide then rebuild
 capture. Shutdown hides windows before worker joins; process death destroys windows.
 Ctrl+Alt+Home uses RegisterHotKey and separate polling; severe driver/OS/UI hangs still
